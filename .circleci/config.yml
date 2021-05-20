@@ -1,0 +1,60 @@
+version: 2.1
+
+commands:
+  enable_buildx:
+    description: "Prepare the CircleCI machine for using buildx"
+    parameters:
+      buildkit_version:
+        type: string
+        default: master
+    steps:
+      - run:
+          name: Create builder with buildkit << parameters.buildkit_version >>
+          command: docker buildx ls | grep "build-<< parameters.buildkit_version >>" || docker buildx create --name build-<< parameters.buildkit_version >> --driver docker-container --driver-opt image=moby/buildkit:<< parameters.buildkit_version >>,network=host
+      - run:
+          name: Set builder
+          command: docker buildx use --default build-<< parameters.buildkit_version >>
+      - run:
+          name: Start up buildx and inspect
+          command: docker buildx inspect --bootstrap
+  docker_build_push_prune:
+    description: "Docker build + push + prune"
+    steps:
+      - run:
+          name: docker build
+          command: |
+            docker build \
+              --cache-from carwow/buildkit-cache-issue:latest \
+              --tag carwow/buildkit-cache-issue:latest \
+              --file Dockerfile \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              "."
+      - run:
+          name: docker push
+          command: docker push carwow/buildkit-cache-issue:latest
+      - run: docker system prune -af
+
+jobs:
+  build:
+    machine:
+      image: ubuntu-2004:202104-01
+    environment:
+      DOCKER_BUILDKIT: 1
+      BUILDKIT_PROGRESS: plain
+    steps:
+      - checkout
+      - run:
+          name: docker login
+          command: docker login -u $DOCKER_USERNAME -p $DOCKER_TOKEN
+      - enable_buildx
+      - docker_build_push_prune
+      - run: touch x
+      - docker_build_push_prune
+      - run: touch y
+      - docker_build_push_prune
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build
