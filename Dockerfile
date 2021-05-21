@@ -1,5 +1,5 @@
 FROM python:3.7-buster
 
-RUN echo before
+RUN date > before
 COPY . /app
-RUN echo after
+RUN date > after
